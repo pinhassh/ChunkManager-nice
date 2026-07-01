@@ -59,8 +59,9 @@ src/
 └── ui/
     └── AppUI.ts             Buttons, status panel, live log list
 server/
-└── mockServer.ts            Express: chunk upload, complete, status
-tests/                       Vitest suites (storage, upload, recorder, api)
+├── mockServer.ts            Express: chunk upload, complete, status
+└── videoMerger.ts           Joins a session's chunks into one <sessionId>.webm (ffmpeg)
+tests/                       Vitest suites (storage, upload, recorder, api, merger)
 docs/                        Architecture, recovery, decisions, and Jira board
 ```
 
@@ -73,6 +74,10 @@ backoff. On success the blob is deleted and its metadata kept. When recording
 stops, a `complete` request is sent with everything the backend needs to process
 the chunks — but only after every chunk has been confirmed. On startup the app
 scans IndexedDB for unfinished work and resumes it.
+
+On `complete`, the server also **merges the chunks into a single video** named
+after the session — `server/uploads/<sessionId>/<sessionId>.webm` — using ffmpeg
+(via the bundled `ffmpeg-static`); the individual chunk files are kept too.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 [`docs/RECOVERY.md`](docs/RECOVERY.md) for the full picture, and
