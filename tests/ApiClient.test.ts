@@ -81,6 +81,23 @@ describe('ApiClient — completeRecording & status', () => {
   });
 });
 
+describe('ApiClient — checkHealth', () => {
+  it('returns true when /health responds ok', async () => {
+    const fetchMock = stubFetch(() => Promise.resolve({ ok: true, status: 200 }));
+    const api = new ApiClient(BASE);
+
+    expect(await api.checkHealth()).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/health`);
+  });
+
+  it('returns false (never throws) when the server is unreachable', async () => {
+    stubFetch(() => Promise.reject(new Error('connection refused')));
+    const api = new ApiClient(BASE);
+
+    expect(await api.checkHealth()).toBe(false);
+  });
+});
+
 describe('ApiClient — request timeout (CM-11 / R5)', () => {
   it('aborts a hung request and fails with status=null', async () => {
     // A fetch that never resolves on its own, but rejects when the signal aborts.
