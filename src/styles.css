@@ -1,0 +1,144 @@
+:root {
+  --bg: #0f1720;
+  --panel: #1b2531;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --success: #3fb950;
+  --warning: #d29922;
+  --error: #f85149;
+  --accent: #2f81f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.app__subtitle {
+  margin: 0.25rem 0 1.5rem;
+  color: var(--muted);
+}
+
+.banner {
+  background: var(--panel);
+  border-left: 4px solid var(--warning);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.banner--hidden {
+  display: none;
+}
+
+.controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 0.7rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  transition: opacity 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--start {
+  background: var(--success);
+}
+
+.btn--stop {
+  background: var(--error);
+}
+
+.status {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.status__row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.status__row:last-child {
+  border-bottom: none;
+}
+
+.status__label {
+  color: var(--muted);
+}
+
+.status__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.logs h2 {
+  font-size: 1.1rem;
+}
+
+.log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.log-list li {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log--success {
+  color: var(--success);
+}
+
+.log--warning {
+  color: var(--warning);
+}
+
+.log--error {
+  color: var(--error);
+}
+
+.log__meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
