@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChunkManager — Resilient Screen Recorder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <h1>ChunkManager</h1>
+        <p class="app__subtitle">Fault-tolerant screen recording &amp; chunked upload</p>
+      </header>
+
+      <section id="recovery-banner" class="banner banner--hidden" role="status"></section>
+
+      <section class="controls">
+        <button id="start-btn" class="btn btn--start" type="button">● Start recording</button>
+        <button id="stop-btn" class="btn btn--stop" type="button" disabled>■ Stop</button>
+      </section>
+
+      <section class="status">
+        <div class="status__row">
+          <span class="status__label">State</span>
+          <span id="state" class="status__value">idle</span>
+        </div>
+        <div class="status__row">
+          <span class="status__label">Session</span>
+          <span id="session-id" class="status__value">—</span>
+        </div>
+        <div class="status__row">
+          <span class="status__label">Chunks recorded</span>
+          <span id="chunk-count" class="status__value">0</span>
+        </div>
+        <div class="status__row">
+          <span class="status__label">Pending upload</span>
+          <span id="pending-count" class="status__value">0</span>
+        </div>
+        <div class="status__row">
+          <span class="status__label">Uploaded</span>
+          <span id="uploaded-count" class="status__value">0</span>
+        </div>
+        <div class="status__row">
+          <span class="status__label">Network</span>
+          <span id="network" class="status__value">online</span>
+        </div>
+      </section>
+
+      <section class="logs">
+        <h2>Logs</h2>
+        <ul id="log" class="log-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
