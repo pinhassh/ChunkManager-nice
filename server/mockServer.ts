@@ -24,6 +24,7 @@ import cors from 'cors';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mergeChunks, orderedChunkFiles } from './videoMerger';
 
 /** Payload the client sends to finalize a recording (mirrors the shared CompletePayload). */
 interface CompletePayload {
@@ -94,6 +95,36 @@ function shouldSimulateFailure(req: Request): boolean {
   return FAIL_RATE > 0 && Math.random() < FAIL_RATE;
 }
 
+/**
+ * Merge a session's chunks into `<sessionId>.webm` (in the session folder).
+ * Returns a summary, or null if there was nothing to merge or it failed — a merge
+ * failure never blocks finalize, since the individual chunks are already safe.
+ */
+async function mergeSessionVideo(
+  dir: string,
+  sessionId: string,
+): Promise<{ file: string; mergedChunks: number } | null> {
+  try {
+    const files = await orderedChunkFiles(dir);
+    if (files.length === 0) {
+      log('warning', 'No chunks to merge for session', { sessionId });
+      return null;
+    }
+
+    const result = await mergeChunks(dir, files, `${sessionId}.webm`);
+    const file = path.basename(result.outputFile);
+    log('success', 'Merged chunks into a single video', {
+      sessionId,
+      file,
+      mergedChunks: result.mergedChunks,
+    });
+    return { file, mergedChunks: result.mergedChunks };
+  } catch (err) {
+    log('error', 'Failed to merge chunks into a single video', { sessionId, error: String(err) });
+    return null;
+  }
+}
+
 // --- App ---------------------------------------------------------------------
 
 const app = express();
@@ -153,8 +184,9 @@ app.post(
 );
 
 /**
- * Finalize a recording: persist the manifest and report how many chunk files
- * are actually on disk so the client can reconcile against `totalChunks`.
+ * Finalize a recording: persist the manifest, MERGE the chunks into a single video
+ * named after the session, and report how many chunk files are on disk so the
+ * client can reconcile against `totalChunks`.
  */
 app.post('/recordings/:sessionId/complete', express.json(), async (req: Request, res: Response) => {
   const { sessionId } = req.params;
@@ -172,7 +204,12 @@ app.post('/recordings/:sessionId/complete', express.json(), async (req: Request,
       totalChunks: payload?.totalChunks,
       received,
     });
-    res.status(200).json({ ok: true, sessionId, received });
+
+    // Merge all chunks into `<sessionId>.webm`. A merge failure must not fail the
+    // request — the individual chunks remain safe on disk either way.
+    const merged = await mergeSessionVideo(dir, sessionId);
+
+    res.status(200).json({ ok: true, sessionId, received, merged });
   } catch (err) {
     log('error', 'Failed to finalize recording', { sessionId, error: String(err) });
     res.status(500).json({ ok: false, error: String(err) });
