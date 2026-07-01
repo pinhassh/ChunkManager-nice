@@ -94,14 +94,27 @@ export class ScreenRecorder {
       throw error;
     }
 
-    this.chosenMimeType = this.pickMimeType();
-    this.chunkIndex = 0;
-    this.recording = true;
+    try {
+      this.chosenMimeType = this.pickMimeType();
+      this.chunkIndex = 0;
+      this.recording = true;
 
-    // The user can stop sharing from the browser UI; the video track then ends.
-    this.watchForUserStop(this.stream);
+      // The user can stop sharing from the browser UI; the video track then ends.
+      this.watchForUserStop(this.stream);
 
-    this.startCycle();
+      this.startCycle();
+    } catch (error) {
+      // Setup failed after capture was granted (e.g. MediaRecorder unsupported):
+      // release the stream so its tracks don't leak, and reset state.
+      this.recording = false;
+      this.releaseStream();
+      logger.error('Failed to start recording after screen capture was granted.', {
+        source: 'ScreenRecorder.start',
+        error,
+      });
+      this.callbacks.onError?.(error);
+      throw error;
+    }
 
     logger.success('Screen recording started.', {
       source: 'ScreenRecorder.start',

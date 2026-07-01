@@ -10,14 +10,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
-import { ChunkStore } from '../src/storage/ChunkStore';
+import { ChunkStore, StorageFullError } from '../src/storage/ChunkStore';
 import { UploadManager } from '../src/upload/UploadManager';
 import { RETRY } from '../src/core/config';
-import type { ChunkRecord, IApiClient, SessionMeta } from '../src/recording/types';
+import type { ChunkRecord, CompletePayload, IApiClient, SessionMeta } from '../src/recording/types';
 
 class FakeApi implements IApiClient {
   uploadChunk = vi.fn(async (_s: string, _i: number, _b: Blob) => {});
-  completeRecording = vi.fn(async () => {});
+  completeRecording = vi.fn(async (_payload: CompletePayload) => {});
   getSessionStatus = vi.fn(async () => ({ receivedIndexes: [] as number[] }));
 }
 
@@ -185,5 +185,44 @@ describe('UploadManager — crash recovery', () => {
     expect(session?.status).toBe('completed');
     const payload = api.completeRecording.mock.calls[0][0] as unknown as { totalChunks: number };
     expect(payload.totalChunks).toBe(2); // reconciled from uploaded + pending
+  });
+});
+
+describe('UploadManager — resource safety (CM-11)', () => {
+  it('dead-letters a chunk after the lifetime retry cap and stops retrying (R2)', async () => {
+    api.uploadChunk.mockRejectedValue(new Error('permafail'));
+    await store.saveSession(makeSession('s1'));
+    await store.saveChunk(makeChunk('s1', 0));
+
+    const um = new UploadManager(store, api, { sleep: noSleep });
+    // Drain repeatedly; each drain adds up to maxAttempts to the cumulative count.
+    for (let i = 0; i < 12 && (await store.countPendingChunks()) > 0; i++) {
+      await um.drain();
+    }
+
+    expect(await store.countPendingChunks()).toBe(0); // dead-lettered, no longer pending
+    const callsAfterDeath = api.uploadChunk.mock.calls.length;
+    await um.drain(); // further drains must not retry it
+    expect(api.uploadChunk.mock.calls.length).toBe(callsAfterDeath);
+  });
+
+  it('never loads full blob sets during a drain — uses count/keys only (R1)', async () => {
+    await store.saveSession(makeSession('s1', { status: 'stopped', totalChunks: 2, endedAt: 2_000 }));
+    await store.saveChunk(makeChunk('s1', 0));
+    await store.saveChunk(makeChunk('s1', 1));
+
+    const fullLoadSpy = vi.spyOn(store, 'getPendingChunks');
+    const um = new UploadManager(store, api, { sleep: noSleep, onStats: () => {} });
+    await um.drain();
+
+    expect(fullLoadSpy).not.toHaveBeenCalled();
+    expect(api.uploadChunk).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces StorageFullError from enqueueChunk so recording can stop gracefully (R3)', async () => {
+    vi.spyOn(store, 'saveChunk').mockRejectedValueOnce(new StorageFullError());
+    const um = new UploadManager(store, api, { sleep: noSleep });
+
+    await expect(um.enqueueChunk(makeChunk('s1', 0))).rejects.toBeInstanceOf(StorageFullError);
   });
 });

@@ -18,6 +18,7 @@ progress. Update the `Status` and `Progress` columns as work moves.
 | [CM-08](CM-08-tests.md) | Tests (positive + negative flows) | `test/coverage` | Done | 100% |
 | [CM-09](CM-09-docs.md) | Documentation & Jira board | `docs/project-docs` | Done | 100% |
 | [CM-10](CM-10-verification.md) | Build, verify E2E, finalize | `chore/verification` | Done | 100% |
+| [CM-11](CM-11-robustness-hardening.md) | Robustness & resource-safety hardening | `fix/resource-safety` | Done | 100% |
 
 ## Sprint goal
 Deliver a runnable, tested, fault-tolerant chunk-upload mechanism with a
@@ -35,5 +36,8 @@ drops, shutdowns, and mid-upload failures.
 - **CM-08** Done — 26 tests passing (positive + negative flows).
 - **CM-09** Done — ARCHITECTURE, RECOVERY, ENGINEERING_DECISIONS, README.
 - **CM-10** Done — build + 26 tests + E2E verified; merged `develop → main`.
+- **CM-11** Done — resource-safety hardening (OOM, quota, dead-letter, stale DB,
+  fetch timeout, MediaStream leak, log cap) from the ChunkStore review + audit;
+  14 new negative/stress tests (40 total), tsc clean.
 
-**Sprint complete — all 10 tasks Done.** ✅
+**Sprint 1 complete (CM-01…CM-10). Sprint 2 complete (CM-11).** ✅

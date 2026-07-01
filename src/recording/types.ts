@@ -5,8 +5,18 @@
  * types so the pieces fit together without guessing each other's shapes.
  */
 
-/** Lifecycle of a single chunk as it moves from "just recorded" to "on the server". */
-export type ChunkStatus = 'pending' | 'uploading' | 'uploaded' | 'failed';
+/**
+ * Lifecycle of a single chunk as it moves from "just recorded" to "on the server".
+ * `dead` = exceeded the lifetime retry cap; kept as a tombstone (blob freed) and
+ * never retried again.
+ */
+export type ChunkStatus = 'pending' | 'uploading' | 'uploaded' | 'failed' | 'dead';
+
+/** Composite identity of a chunk (the IndexedDB key), without any payload. */
+export interface ChunkKey {
+  sessionId: string;
+  index: number;
+}
 
 /** Metadata describing a chunk, without the heavy binary payload. */
 export interface ChunkMeta {
@@ -69,13 +79,27 @@ export interface IChunkStore {
     attempts?: number,
   ): Promise<void>;
   deleteChunk(sessionId: string, index: number): Promise<void>;
-  /** All chunks not yet confirmed uploaded, ordered by (sessionId, index). */
+  /** Dead-letter a chunk: status → 'dead' and free its blob; never retried again (R2). */
+  markChunkDead(sessionId: string, index: number): Promise<void>;
+  /** Load a single chunk (with its blob) by key, or undefined. Memory-safe (R1). */
+  getChunk(sessionId: string, index: number): Promise<ChunkRecord | undefined>;
+  /** Keys of chunks still needing work (not uploaded/dead) — NO blobs loaded (R1). */
+  getPendingChunkKeys(): Promise<ChunkKey[]>;
+  /** Count of chunks still needing work, without loading any records (R1). */
+  countPendingChunks(): Promise<number>;
+  /**
+   * All chunks still needing work, WITH blobs. Loads everything into memory, so
+   * it is for tests/inspection only — never call it on a hot path (R1).
+   */
   getPendingChunks(): Promise<ChunkRecord[]>;
   saveSession(meta: SessionMeta): Promise<void>;
   getSession(sessionId: string): Promise<SessionMeta | undefined>;
   /** Sessions whose status is not yet "completed" (used for crash recovery). */
   getUnfinishedSessions(): Promise<SessionMeta[]>;
   markSessionCompleted(sessionId: string): Promise<void>;
+  deleteSession(sessionId: string): Promise<void>;
+  /** Prune completed sessions older than the cutoff; returns how many were removed (R2). */
+  pruneCompletedSessions(olderThanMs: number): Promise<number>;
 }
 
 /** Payload sent to the server when a recording finishes — everything needed to process the chunks. */

@@ -83,6 +83,31 @@ fails midway. The heart of the task is the **recovery mechanism**.
   share-cancel handled cleanly.
 - ApiClient: request building; non-2xx → error.
 
+## Robustness & resource-safety requirements (mandatory)
+
+These are hard rules for this codebase. Any new feature or review must satisfy
+them; each has a matching negative/stress test. (Added after the CM-11 audit.)
+
+- **R1 — No unbounded in-memory loads.** Never load an entire collection into RAM,
+  especially records that carry blobs. Use `count()` for counts, key cursors for
+  iteration, and load heavy payloads **one at a time**. `getAll()` over blob-bearing
+  stores is banned in hot paths.
+- **R2 — Nothing lives forever.** Every persistent record has an exit: chunks
+  dead-letter after `RETRY.maxLifetimeAttempts`; completed/dead records are pruned by
+  retention. Unbounded growth (storage, DOM, listeners) is a bug.
+- **R3 — Handle resource exhaustion explicitly.** `QuotaExceededError` (and similar)
+  must be caught, trigger a reclaim attempt, and degrade gracefully (pause + notify) —
+  never silently kill recording. Surface a typed error to the caller.
+- **R4 — Own every resource's full lifecycle.** DB connections handle
+  `onversionchange`/`onclose` and re-open on demand; MediaStream/MediaRecorder are
+  released on **every** error path; event listeners are removable; timers are cleared.
+- **R5 — Bound every network call.** Every request uses an AbortController timeout so a
+  hung connection can't stall the pipeline; a timeout maps to a retryable error.
+- **R6 — Cap unbounded UI accumulation.** On-screen lists (logs) are trimmed to a max.
+- **R7 — Prove it with tests.** Each rule above ships with a negative/stress test
+  (mocked quota, cursor/count paths, dead-letter, versionchange/close, request timeout,
+  log cap). See CM-11.
+
 ## Verification (end-to-end)
 
 1. `npm install`.

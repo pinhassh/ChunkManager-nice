@@ -80,3 +80,22 @@ describe('ApiClient — completeRecording & status', () => {
     expect(status.receivedIndexes).toEqual([0, 1, 2]);
   });
 });
+
+describe('ApiClient — request timeout (CM-11 / R5)', () => {
+  it('aborts a hung request and fails with status=null', async () => {
+    // A fetch that never resolves on its own, but rejects when the signal aborts.
+    stubFetch((_url: unknown, init: unknown) => {
+      const signal = (init as RequestInit).signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted.', 'AbortError')),
+        );
+      });
+    });
+    const api = new ApiClient(BASE, 20); // 20ms timeout
+
+    const error = await api.uploadChunk('s', 0, new Blob(['x'])).catch((e) => e);
+    expect(error).toBeInstanceOf(HttpError);
+    expect(error.status).toBeNull();
+  });
+});

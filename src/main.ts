@@ -12,7 +12,7 @@
 
 import './styles.css';
 import { logger } from './core/Logger';
-import { ChunkStore } from './storage/ChunkStore';
+import { ChunkStore, StorageFullError } from './storage/ChunkStore';
 import { ScreenRecorder, type RecorderChunk } from './recording/ScreenRecorder';
 import { ApiClient } from './upload/ApiClient';
 import { UploadManager } from './upload/UploadManager';
@@ -39,6 +39,8 @@ const recorder = new ScreenRecorder({
 
 let currentSessionId: string | null = null;
 let chunkCount = 0;
+/** Set once storage is full; we stop accepting new chunks and end the session. */
+let storageFull = false;
 
 // --- Handlers ----------------------------------------------------------------
 
@@ -56,6 +58,7 @@ async function handleStart(): Promise<void> {
 
   currentSessionId = sessionId;
   chunkCount = 0;
+  storageFull = false;
   ui.setSessionId(sessionId);
   ui.setState('recording');
   ui.setCounts({ chunks: 0, pending: 0, uploaded: 0 });
@@ -79,7 +82,8 @@ async function handleStart(): Promise<void> {
 
 /** Persist and enqueue each completed chunk. */
 async function handleChunk(chunk: RecorderChunk): Promise<void> {
-  if (!currentSessionId) return;
+  // Once storage is full we stop accepting chunks (the final flush lands here too).
+  if (!currentSessionId || storageFull) return;
 
   const record: ChunkRecord = {
     sessionId: currentSessionId,
@@ -95,7 +99,30 @@ async function handleChunk(chunk: RecorderChunk): Promise<void> {
 
   // Counters are refreshed by the UploadManager's onStats callback below.
   chunkCount = chunk.index + 1;
-  await uploadManager.enqueueChunk(record);
+
+  try {
+    await uploadManager.enqueueChunk(record);
+  } catch (error) {
+    if (error instanceof StorageFullError) {
+      // Degrade gracefully: stop recording, but already-saved chunks still upload.
+      storageFull = true;
+      logger.error('Storage is full — stopping recording to avoid corrupt data.', {
+        source: 'main.handleChunk',
+        context: { sessionId: record.sessionId, chunkIndex: record.index },
+        error,
+      });
+      ui.showRecovery(
+        'Storage full — recording stopped. Saved chunks will still upload; free space and reload to continue.',
+      );
+      void handleStop();
+    } else {
+      logger.error('Failed to enqueue chunk.', {
+        source: 'main.handleChunk',
+        context: { sessionId: record.sessionId, chunkIndex: record.index },
+        error,
+      });
+    }
+  }
 }
 
 /** Stop recording, mark the session stopped, and let the uploader finalize it. */

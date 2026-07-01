@@ -7,7 +7,7 @@
  * stays dumb and easy to fake in tests.
  */
 
-import { SERVER_URL } from '../core/config';
+import { REQUEST_TIMEOUT_MS, SERVER_URL } from '../core/config';
 import type { CompletePayload, IApiClient } from '../recording/types';
 
 /**
@@ -30,7 +30,10 @@ export class HttpError extends Error {
 }
 
 export class ApiClient implements IApiClient {
-  constructor(private readonly baseUrl: string = SERVER_URL) {}
+  constructor(
+    private readonly baseUrl: string = SERVER_URL,
+    private readonly timeoutMs: number = REQUEST_TIMEOUT_MS,
+  ) {}
 
   /** Upload one chunk's binary payload to `/recordings/:sessionId/chunks/:index`. */
   async uploadChunk(sessionId: string, index: number, blob: Blob): Promise<void> {
@@ -59,17 +62,23 @@ export class ApiClient implements IApiClient {
   }
 
   /**
-   * Perform a fetch and normalise failures.
-   * - A rejected fetch (offline/DNS/etc.) → `HttpError` with `status = null`.
-   * - A non-2xx response → `HttpError` with the real status.
+   * Perform a fetch and normalise failures. Every request is bounded by an
+   * AbortController timeout so a hung connection can't stall the pipeline (R5).
+   * - A rejected fetch (offline/DNS/timeout/etc.) becomes HttpError with status null.
+   * - A non-2xx response becomes HttpError with the real status.
    */
   private async send(method: string, url: string, init: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
     let response: Response;
     try {
-      response = await fetch(url, { method, ...init });
+      response = await fetch(url, { method, ...init, signal: controller.signal });
     } catch (error) {
-      // Network-level failure (server down, connection dropped, CORS, ...).
+      // Network-level failure or timeout abort (server down, connection dropped, ...).
       throw new HttpError(method, url, null, error);
+    } finally {
+      clearTimeout(timer);
     }
 
     if (!response.ok) {

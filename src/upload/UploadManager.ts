@@ -16,9 +16,15 @@
  *    is idempotent (keyed by sessionId/index) so a retry never duplicates.
  *  - Guaranteed finalize: the `complete` call is only sent once every chunk of a
  *    stopped session is uploaded, and is itself retried until it succeeds.
+ *
+ * Resource-safety (docs/PROJECT_PLAN.md → Robustness requirements):
+ *  - **R1:** never loads a full blob set — counts via `countPendingChunks`, iterates
+ *    via `getPendingChunkKeys`, and loads ONE blob at a time via `getChunk`.
+ *  - **R2:** a chunk that keeps failing past `RETRY.maxLifetimeAttempts` is
+ *    dead-lettered (freed + never retried again); startup prunes old sessions.
  */
 
-import { RETRY, backoffDelayMs } from '../core/config';
+import { RETENTION, RETRY, backoffDelayMs } from '../core/config';
 import { logger } from '../core/Logger';
 import type {
   ChunkRecord,
@@ -41,6 +47,9 @@ export interface UploadManagerOptions {
   /** Overridable delay (defaults to setTimeout) so tests can skip real waits. */
   sleep?: (ms: number) => Promise<void>;
 }
+
+/** Outcome of trying to upload one chunk. */
+type UploadOutcome = 'resolved' | 'retry-later';
 
 export class UploadManager {
   private draining = false;
@@ -91,8 +100,8 @@ export class UploadManager {
 
   /**
    * Persist a freshly recorded chunk, then kick the queue. Persisting FIRST is
-   * what makes the chunk crash-safe — even if the upload never happens, it is
-   * on disk and will be retried on the next drain / app start.
+   * what makes the chunk crash-safe. May reject with `StorageFullError` (R3) so the
+   * caller can stop recording gracefully.
    */
   async enqueueChunk(record: ChunkRecord): Promise<void> {
     await this.store.saveChunk(record);
@@ -101,38 +110,37 @@ export class UploadManager {
   }
 
   /**
-   * Recover after a reload or shutdown: adopt any interrupted session, then drain
-   * pending chunks and finalize stopped sessions. Returns a small summary.
+   * Recover after a reload or shutdown: adopt any interrupted session, prune old
+   * bookkeeping, then drain pending chunks and finalize stopped sessions.
    */
   async resume(): Promise<{ pendingChunks: number; sessions: number }> {
     await this.reconcileInterruptedSessions();
+    await this.store.pruneCompletedSessions(RETENTION.completedSessionMs).catch(() => 0);
 
-    const pending = await this.store.getPendingChunks();
+    const pendingChunks = await this.store.countPendingChunks();
     const unfinished = (await this.store.getUnfinishedSessions()).filter(
       (s) => s.status !== 'recording',
     );
 
-    if (pending.length === 0 && unfinished.length === 0) {
+    if (pendingChunks === 0 && unfinished.length === 0) {
       logger.success('No unfinished work to resume.', { source: 'UploadManager.resume' });
       return { pendingChunks: 0, sessions: 0 };
     }
 
     logger.warning(
-      `Resuming: ${pending.length} pending chunk(s), ${unfinished.length} unfinished session(s).`,
+      `Resuming: ${pendingChunks} pending chunk(s), ${unfinished.length} unfinished session(s).`,
       { source: 'UploadManager.resume' },
     );
     await this.drain();
-    return { pendingChunks: pending.length, sessions: unfinished.length };
+    return { pendingChunks, sessions: unfinished.length };
   }
 
   /**
    * Drain the queue: upload every pending chunk in order, then finalize any
    * session that is stopped and fully uploaded. Single-flight — concurrent calls
-   * are ignored while one drain is in progress.
+   * set a `rerun` flag so state changed mid-drain is reprocessed.
    */
   async drain(): Promise<void> {
-    // Already draining: flag a re-run so state changed mid-drain (e.g. a session
-    // just marked "stopped") is reprocessed once the current pass finishes.
     if (this.draining) {
       this.rerun = true;
       return;
@@ -162,30 +170,40 @@ export class UploadManager {
     }
   }
 
+  // --- internals -------------------------------------------------------------
+
   /**
-   * Upload every pending chunk in order. Re-reads the store after each upload so
-   * chunks enqueued mid-drain are picked up. Returns false if a chunk could not
-   * be sent (so the caller stops and waits for a later retry).
+   * Upload every pending chunk in order, loading ONE blob at a time (R1). Returns
+   * false as soon as a chunk cannot be sent, so the caller stops and retries later.
    */
   private async uploadAllPending(): Promise<boolean> {
-    let pending = await this.store.getPendingChunks();
-    while (pending.length > 0) {
-      const uploaded = await this.uploadWithRetry(pending[0]);
-      if (!uploaded) return false;
-      pending = await this.store.getPendingChunks();
+    let keys = await this.store.getPendingChunkKeys();
+    while (keys.length > 0) {
+      const { sessionId, index } = keys[0];
+      const chunk = await this.store.getChunk(sessionId, index);
+
+      if (chunk) {
+        const outcome = await this.uploadWithRetry(chunk);
+        if (outcome === 'retry-later') return false;
+      }
+      keys = await this.store.getPendingChunkKeys();
     }
     return true;
   }
 
-  // --- internals -------------------------------------------------------------
-
   /**
-   * Upload a single chunk with exponential-backoff retries. Attempts are capped
-   * PER drain (not for the chunk's lifetime) so a later drain / app start always
-   * gets a fresh set of tries. Returns true on success, false if we should stop.
+   * Upload a single chunk with exponential-backoff retries. Per-drain attempts are
+   * capped by `RETRY.maxAttempts`; the chunk's CUMULATIVE attempts are capped by
+   * `RETRY.maxLifetimeAttempts`, after which it is dead-lettered (R2). Returns
+   * 'resolved' (uploaded or dead) or 'retry-later' (stop this drain).
    */
-  private async uploadWithRetry(chunk: ChunkRecord): Promise<boolean> {
+  private async uploadWithRetry(chunk: ChunkRecord): Promise<UploadOutcome> {
     const { sessionId, index } = chunk;
+
+    if (chunk.attempts >= RETRY.maxLifetimeAttempts) {
+      await this.deadLetter(chunk);
+      return 'resolved';
+    }
 
     for (let attempt = 1; attempt <= RETRY.maxAttempts; attempt++) {
       if (this.isOffline()) {
@@ -193,33 +211,48 @@ export class UploadManager {
           source: 'UploadManager.uploadWithRetry',
           context: { sessionId, chunkIndex: index, attempt },
         });
-        return false;
+        return 'retry-later';
       }
 
+      const cumulative = chunk.attempts + attempt;
       try {
-        await this.store.updateChunkStatus(sessionId, index, 'uploading', chunk.attempts + attempt);
+        await this.store.updateChunkStatus(sessionId, index, 'uploading', cumulative);
         await this.api.uploadChunk(sessionId, index, chunk.blob);
         await this.onChunkUploaded(chunk);
-        return true;
+        return 'resolved';
       } catch (error) {
-        await this.store.updateChunkStatus(sessionId, index, 'failed', chunk.attempts + attempt);
+        await this.store.updateChunkStatus(sessionId, index, 'failed', cumulative);
         logger.warning(`Chunk upload failed (attempt ${attempt}/${RETRY.maxAttempts}).`, {
           source: 'UploadManager.uploadWithRetry',
           context: { sessionId, chunkIndex: index, attempt },
           error,
         });
 
+        if (cumulative >= RETRY.maxLifetimeAttempts) {
+          await this.deadLetter(chunk);
+          return 'resolved';
+        }
         if (attempt >= RETRY.maxAttempts) {
           logger.error('Giving up on this chunk for now; it stays pending for a later retry.', {
             source: 'UploadManager.uploadWithRetry',
             context: { sessionId, chunkIndex: index },
           });
-          return false;
+          return 'retry-later';
         }
         await this.sleep(backoffDelayMs(attempt));
       }
     }
-    return false;
+    return 'retry-later';
+  }
+
+  /** Permanently give up on a chunk: free its blob and stop retrying it (R2). */
+  private async deadLetter(chunk: ChunkRecord): Promise<void> {
+    await this.store.markChunkDead(chunk.sessionId, chunk.index);
+    logger.error('Chunk permanently failed after lifetime retries — dead-lettered.', {
+      source: 'UploadManager.deadLetter',
+      context: { sessionId: chunk.sessionId, chunkIndex: chunk.index, attempt: chunk.attempts },
+    });
+    await this.emitStats();
   }
 
   /**
@@ -254,11 +287,11 @@ export class UploadManager {
   /** Finalize every session that is stopped and has no pending chunks left. */
   private async finalizeReadySessions(): Promise<void> {
     const sessions = await this.store.getUnfinishedSessions();
-    const pending = await this.store.getPendingChunks();
+    const pendingKeys = await this.store.getPendingChunkKeys();
 
     for (const session of sessions) {
       if (session.status !== 'stopped') continue; // still recording — not ready
-      const hasPending = pending.some((c) => c.sessionId === session.sessionId);
+      const hasPending = pendingKeys.some((k) => k.sessionId === session.sessionId);
       if (hasPending) continue; // wait until all chunks are up
       await this.finalizeSession(session);
     }
@@ -315,13 +348,13 @@ export class UploadManager {
    */
   private async reconcileInterruptedSessions(): Promise<void> {
     const sessions = await this.store.getUnfinishedSessions();
-    const pending = await this.store.getPendingChunks();
+    const pendingKeys = await this.store.getPendingChunkKeys();
 
     for (const session of sessions) {
       if (session.status !== 'recording') continue;
 
       const uploaded = (session.uploadedChunks ?? []).length;
-      const pendingCount = pending.filter((c) => c.sessionId === session.sessionId).length;
+      const pendingCount = pendingKeys.filter((k) => k.sessionId === session.sessionId).length;
 
       session.status = 'stopped';
       session.endedAt = session.endedAt ?? Date.now();
@@ -339,12 +372,12 @@ export class UploadManager {
     return typeof navigator !== 'undefined' && navigator.onLine === false;
   }
 
-  /** Push a fresh progress snapshot to the UI, if a listener is registered. */
+  /** Push a fresh progress snapshot to the UI, counting without loading blobs (R1). */
   private async emitStats(): Promise<void> {
     if (!this.options.onStats) return;
-    const pending = await this.store.getPendingChunks();
+    const pending = await this.store.countPendingChunks();
     this.options.onStats({
-      pending: pending.length,
+      pending,
       uploaded: this.uploadedCount,
       draining: this.draining,
     });
