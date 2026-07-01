@@ -1,8 +1,8 @@
 # CM-03 — ChunkStore (IndexedDB persistence)
 
 - **Branch:** `feat/storage-indexeddb`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Durable storage for chunks + sessions so nothing is lost across page reloads or

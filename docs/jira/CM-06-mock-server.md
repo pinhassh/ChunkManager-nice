@@ -1,8 +1,8 @@
 # CM-06 — Mock server (Express)
 
 - **Branch:** `feat/mock-server`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 A local Express server simulating the remote cloud endpoint.

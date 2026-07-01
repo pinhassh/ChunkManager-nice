@@ -1,8 +1,8 @@
 # CM-05 — ApiClient + UploadManager (queue, retry, resume)
 
 - **Branch:** `feat/upload-manager`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 The upload engine: an HTTP client and a resilient queue that survives network

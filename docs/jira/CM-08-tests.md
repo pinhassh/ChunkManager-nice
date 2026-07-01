@@ -1,8 +1,8 @@
 # CM-08 — Tests (positive + negative flows)
 
 - **Branch:** `test/coverage`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Cover the critical logic with positive and negative flows.
