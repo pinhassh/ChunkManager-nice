@@ -39,7 +39,8 @@ records and uploads; a local Express server stands in for the cloud backend.
 | **Logger** | `src/core/Logger.ts` | success/warning/error logging with an explicit `source` and an auto-extracted code origin (`file:line`). |
 | **config** | `src/core/config.ts` | All tunables: chunk length, retry policy, DB names, server URL, MIME candidates. |
 | **types** | `src/recording/types.ts` | Shared domain types and **ports** (`IChunkStore`, `IApiClient`) so layers depend on interfaces, not concretions. |
-| **mockServer** | `server/mockServer.ts` | Express server simulating the cloud endpoint. Stores chunks idempotently; accepts the finalize manifest. |
+| **mockServer** | `server/mockServer.ts` | Express server simulating the cloud endpoint. Stores chunks idempotently; accepts the finalize manifest; triggers the merge. |
+| **videoMerger** | `server/videoMerger.ts` | On `/complete`, remuxes the session's chunks into one `<sessionId>.webm` via ffmpeg (`ffmpeg-static`), stream-copy, in index order. |
 
 ## Why these boundaries
 

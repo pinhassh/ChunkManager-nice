@@ -20,6 +20,8 @@ progress. Update the `Status` and `Progress` columns as work moves.
 | [CM-10](CM-10-verification.md) | Build, verify E2E, finalize | `chore/verification` | Done | 100% |
 | [CM-11](CM-11-robustness-hardening.md) | Robustness & resource-safety hardening | `fix/resource-safety` | Done | 100% |
 | [CM-12](CM-12-connectivity-indicator.md) | Fix: network indicator ignores real reachability | `fix/connectivity-indicator` | Done | 100% |
+| [CM-13](CM-13-source-selection.md) | Explicit capture source selection (Screen/Window/Tab) | `feat/source-selection` | In Progress | 85% |
+| [CM-14](CM-14-merge-chunks-video.md) | Merge chunks into a single `<sessionId>.webm` | `feat/merge-video` | Done | 100% |
 
 ## Sprint goal
 Deliver a runnable, tested, fault-tolerant chunk-upload mechanism with a
@@ -44,4 +46,10 @@ drops, shutdowns, and mid-upload failures.
 - **CM-12** Done — network indicator now reflects real server reachability
   (`ConnectivityMonitor` + `/health` probe), not the unreliable `navigator.onLine`.
 
-**Sprint 1 (CM-01…CM-10), Sprint 2 (CM-11), Sprint 3 (CM-12) — all complete.** ✅
+- **CM-13** In progress (WIP on branch, not merged) — surface the Screen/Window/Tab
+  selection in UI + logs.
+- **CM-14** Done — merge chunks into a single `<sessionId>.webm` via ffmpeg
+  (ffmpeg-static); verified end-to-end (2s merged output).
+
+**Sprint 1 (CM-01…CM-10), Sprint 2 (CM-11), Sprint 3 (CM-12), Sprint 4 (CM-14) done.
+CM-13 parked as WIP.**
