@@ -11,6 +11,8 @@
  */
 
 import './styles.css';
+import { CONNECTIVITY_POLL_MS } from './core/config';
+import { ConnectivityMonitor } from './core/ConnectivityMonitor';
 import { logger } from './core/Logger';
 import { ChunkStore, StorageFullError } from './storage/ChunkStore';
 import { ScreenRecorder, type RecorderChunk } from './recording/ScreenRecorder';
@@ -167,9 +169,17 @@ async function bootstrap(): Promise<void> {
   // Stream every log into the on-screen list.
   logger.subscribe((entry) => ui.appendLog(entry));
 
-  // Reflect live network changes in the UI.
-  window.addEventListener('online', () => ui.setNetwork(true));
-  window.addEventListener('offline', () => ui.setNetwork(false));
+  // Drive the network indicator from real server reachability (not navigator.onLine),
+  // and kick a drain the moment the server becomes reachable again.
+  const connectivity = new ConnectivityMonitor(
+    () => api.checkHealth(),
+    (online) => {
+      ui.setNetwork(online);
+      if (online) void uploadManager.drain();
+    },
+    CONNECTIVITY_POLL_MS,
+  );
+  connectivity.start();
 
   try {
     await store.init();

@@ -53,6 +53,19 @@ export class ApiClient implements IApiClient {
     });
   }
 
+  /**
+   * Probe whether the upload server is actually reachable (for the network
+   * indicator). Returns false on any failure/timeout instead of throwing.
+   */
+  async checkHealth(): Promise<boolean> {
+    try {
+      await this.send('GET', `${this.baseUrl}/health`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Ask the server which chunk indexes it already has (for resume/reconcile). */
   async getSessionStatus(sessionId: string): Promise<{ receivedIndexes: number[] }> {
     const url = `${this.baseUrl}/recordings/${encodeURIComponent(sessionId)}/status`;
