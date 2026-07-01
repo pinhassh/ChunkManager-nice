@@ -37,6 +37,7 @@ export class AppUI {
   private readonly stopBtn = required<HTMLButtonElement>('stop-btn');
   private readonly stateEl = required('state');
   private readonly sessionEl = required('session-id');
+  private readonly sourceEl = required('source');
   private readonly chunkCountEl = required('chunk-count');
   private readonly pendingCountEl = required('pending-count');
   private readonly uploadedCountEl = required('uploaded-count');
@@ -61,6 +62,11 @@ export class AppUI {
 
   setSessionId(sessionId: string | null): void {
     this.sessionEl.textContent = sessionId ?? '—';
+  }
+
+  /** Show which capture source the user picked (Screen/Window/Tab); null resets it. */
+  setSource(label: string | null): void {
+    this.sourceEl.textContent = label ?? '—';
   }
 
   setCounts(counts: UiCounts): void {

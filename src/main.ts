@@ -33,6 +33,7 @@ const uploadManager = new UploadManager(store, api, {
 
 const recorder = new ScreenRecorder({
   onChunk: handleChunk,
+  onSourceSelected: (_surface, label) => ui.setSource(label),
   onError: () => resetToIdle(),
   onStreamEnded: () => void handleStop(),
 });
@@ -49,6 +50,7 @@ let storageFull = false;
 /** Begin a new recording session. */
 async function handleStart(): Promise<void> {
   const sessionId = crypto.randomUUID();
+  ui.setSource(null); // cleared before the picker; onSourceSelected sets the real value
 
   try {
     // Opens the browser's screen-share prompt; throws if the user cancels.
@@ -151,6 +153,7 @@ async function handleStop(): Promise<void> {
 
   await uploadManager.drain(); // upload any remaining chunks, then send `complete`
   ui.setState('idle');
+  ui.setSource(null);
 }
 
 // --- Helpers -----------------------------------------------------------------
@@ -160,6 +163,7 @@ function resetToIdle(): void {
   currentSessionId = null;
   chunkCount = 0;
   ui.setSessionId(null);
+  ui.setSource(null);
   ui.setState('idle');
 }
 

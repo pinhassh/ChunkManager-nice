@@ -34,8 +34,12 @@ class FakeMediaRecorder {
   }
 }
 
-function makeStream() {
-  const track = { stop: vi.fn(), addEventListener: vi.fn() };
+function makeStream(displaySurface: string | undefined = 'monitor') {
+  const track = {
+    stop: vi.fn(),
+    addEventListener: vi.fn(),
+    getSettings: () => ({ displaySurface }),
+  };
   return { getVideoTracks: () => [track], getTracks: () => [track], track };
 }
 
@@ -132,5 +136,54 @@ describe('ScreenRecorder — error handling', () => {
     expect(stream.track.stop).toHaveBeenCalled(); // stream released — not leaked
     expect(rec.isRecording).toBe(false);
     expect(onError).toHaveBeenCalled();
+  });
+});
+
+describe('ScreenRecorder — source selection (Screen/Window/Tab)', () => {
+  it('opens the native picker offering all surfaces (video: true)', async () => {
+    const rec = new ScreenRecorder({ onChunk: vi.fn() });
+    await rec.start();
+    expect(getDisplayMedia).toHaveBeenCalledWith(expect.objectContaining({ video: true }));
+  });
+
+  it('reports the surface the user selected', async () => {
+    stream = makeStream('browser'); // user picked a browser tab
+    getDisplayMedia.mockResolvedValue(stream);
+    const onSourceSelected = vi.fn();
+
+    const rec = new ScreenRecorder({ onChunk: vi.fn(), onSourceSelected });
+    await rec.start();
+
+    expect(onSourceSelected).toHaveBeenCalledWith('browser', 'Browser tab');
+    expect(rec.source).toBe('browser');
+  });
+
+  it('maps each surface to a human label', async () => {
+    for (const [surface, label] of [
+      ['monitor', 'Entire screen'],
+      ['window', 'Application window'],
+    ] as const) {
+      stream = makeStream(surface);
+      getDisplayMedia.mockResolvedValue(stream);
+      const onSourceSelected = vi.fn();
+
+      const rec = new ScreenRecorder({ onChunk: vi.fn(), onSourceSelected });
+      await rec.start();
+
+      expect(onSourceSelected).toHaveBeenCalledWith(surface, label);
+    }
+  });
+
+  it('falls back to "unknown" when the surface is unavailable', async () => {
+    // A track whose getSettings() has no displaySurface at all.
+    const track = { stop: vi.fn(), addEventListener: vi.fn(), getSettings: () => ({}) };
+    getDisplayMedia.mockResolvedValue({ getVideoTracks: () => [track], getTracks: () => [track] });
+    const onSourceSelected = vi.fn();
+
+    const rec = new ScreenRecorder({ onChunk: vi.fn(), onSourceSelected });
+    await rec.start();
+
+    expect(onSourceSelected).toHaveBeenCalledWith('unknown', 'Unknown source');
+    expect(rec.source).toBe('unknown');
   });
 });

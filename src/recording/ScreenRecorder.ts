@@ -25,10 +25,31 @@ export interface RecorderChunk {
   mimeType: string;
 }
 
+/**
+ * The capture surface the user picked in the browser's native getDisplayMedia
+ * dialog. The browser owns that Screen/Window/Tab chooser (it cannot be replaced by
+ * app UI for security reasons); we read back what was chosen.
+ */
+export type DisplaySurface = 'monitor' | 'window' | 'browser' | 'unknown';
+
+const SURFACE_LABELS: Record<DisplaySurface, string> = {
+  monitor: 'Entire screen',
+  window: 'Application window',
+  browser: 'Browser tab',
+  unknown: 'Unknown source',
+};
+
+/** Human-readable label for a captured display surface. */
+export function displaySurfaceLabel(surface: DisplaySurface): string {
+  return SURFACE_LABELS[surface] ?? SURFACE_LABELS.unknown;
+}
+
 /** Callbacks the host wires into the recorder lifecycle. */
 export interface ScreenRecorderCallbacks {
   /** Called for every completed chunk (0-based index). */
   onChunk: (chunk: RecorderChunk) => void | Promise<void>;
+  /** Called once the user has picked a source, with the chosen surface + label. */
+  onSourceSelected?: (surface: DisplaySurface, label: string) => void;
   /** Called on a fatal error (e.g. permission denial). */
   onError?: (error: unknown) => void;
   /** Called when the user clicks the browser's native "Stop sharing". */
@@ -41,6 +62,7 @@ export class ScreenRecorder {
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
   private chosenMimeType = '';
+  private selectedSurface: DisplaySurface = 'unknown';
 
   private recording = false;
   private chunkIndex = 0;
@@ -68,6 +90,11 @@ export class ScreenRecorder {
     return this.chosenMimeType;
   }
 
+  /** The capture surface the user picked (Screen/Window/Tab), or 'unknown'. */
+  get source(): DisplaySurface {
+    return this.selectedSurface;
+  }
+
   /** Whether a recording session is currently active. */
   get isRecording(): boolean {
     return this.recording;
@@ -81,6 +108,9 @@ export class ScreenRecorder {
     if (this.recording) return; // idempotent guard
 
     try {
+      // `video: true` makes the browser's native picker offer ALL surfaces —
+      // Entire screen, Application window, and Browser tab — and the user chooses.
+      // This picker is mandated by the browser and cannot be replaced by app UI.
       this.stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false,
@@ -99,6 +129,13 @@ export class ScreenRecorder {
       this.chunkIndex = 0;
       this.recording = true;
 
+      // Read back which source the user picked and report it to the host.
+      this.selectedSurface = this.readSelectedSurface(this.stream);
+      this.callbacks.onSourceSelected?.(
+        this.selectedSurface,
+        displaySurfaceLabel(this.selectedSurface),
+      );
+
       // The user can stop sharing from the browser UI; the video track then ends.
       this.watchForUserStop(this.stream);
 
@@ -116,9 +153,12 @@ export class ScreenRecorder {
       throw error;
     }
 
-    logger.success('Screen recording started.', {
+    logger.success(`Screen recording started (source: ${displaySurfaceLabel(this.selectedSurface)}).`, {
       source: 'ScreenRecorder.start',
-      context: { mimeType: this.chosenMimeType || '(browser default)' },
+      context: {
+        mimeType: this.chosenMimeType || '(browser default)',
+        displaySurface: this.selectedSurface,
+      },
     });
   }
 
@@ -139,6 +179,17 @@ export class ScreenRecorder {
     await this.stopActiveRecorderAndAwait();
 
     this.releaseStream();
+  }
+
+  /** Read the capture surface (Screen/Window/Tab) the user selected in the picker. */
+  private readSelectedSurface(stream: MediaStream): DisplaySurface {
+    const [videoTrack] = stream.getVideoTracks();
+    const settings = videoTrack?.getSettings() as { displaySurface?: string } | undefined;
+    const surface = settings?.displaySurface;
+    if (surface === 'monitor' || surface === 'window' || surface === 'browser') {
+      return surface;
+    }
+    return 'unknown';
   }
 
   /** Choose the first supported candidate MIME type, or '' for the browser default. */

@@ -13,6 +13,7 @@ function setupDom(): void {
     <button id="stop-btn" disabled></button>
     <span id="state"></span>
     <span id="session-id"></span>
+    <span id="source"></span>
     <span id="chunk-count"></span>
     <span id="pending-count"></span>
     <span id="uploaded-count"></span>
@@ -72,5 +73,16 @@ describe('AppUI — controls', () => {
     ui.setState('idle');
     expect(startBtn.disabled).toBe(false);
     expect(stopBtn.disabled).toBe(true);
+  });
+
+  it('shows the selected capture source and resets it', () => {
+    const ui = new AppUI({ onStart: () => {}, onStop: () => {} });
+    const source = document.getElementById('source')!;
+
+    ui.setSource('Entire screen');
+    expect(source.textContent).toBe('Entire screen');
+
+    ui.setSource(null);
+    expect(source.textContent).toBe('—');
   });
 });
