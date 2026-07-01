@@ -48,6 +48,11 @@ export interface SessionMeta {
   mimeType: string;
   /** Total number of chunks produced; known once the session is stopped. */
   totalChunks: number | null;
+  /**
+   * Metadata of chunks confirmed uploaded, accumulated as uploads succeed.
+   * Lets us build the `complete` payload after the heavy blobs are deleted.
+   */
+  uploadedChunks?: Array<{ index: number; size: number; durationMs: number }>;
 }
 
 /**
