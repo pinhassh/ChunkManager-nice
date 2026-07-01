@@ -22,7 +22,6 @@ class FakeApi implements IApiClient {
 }
 
 const noSleep = () => Promise.resolve();
-const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function setOnline(value: boolean): void {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => value });
@@ -147,12 +146,13 @@ describe('UploadManager — network resilience', () => {
     expect(await store.getPendingChunks()).toHaveLength(1);
 
     setOnline(true);
-    window.dispatchEvent(new Event('online')); // triggers a drain
-    await tick();
-    await tick();
+    window.dispatchEvent(new Event('online')); // triggers an async drain
 
+    // Poll until the event-driven drain finishes (robust to IndexedDB async hops).
+    await vi.waitFor(async () => {
+      expect(await store.countPendingChunks()).toBe(0);
+    });
     expect(api.uploadChunk).toHaveBeenCalledTimes(1);
-    expect(await store.getPendingChunks()).toHaveLength(0);
     um.detachNetworkListeners();
   });
 });
