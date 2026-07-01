@@ -5,12 +5,13 @@
  * Why not just concatenate the bytes? The chunks are COMPLETE standalone WebM
  * files (the recorder uses stop/restart so each is independently playable), so a
  * byte-level concat is invalid: it would contain multiple EBML headers/Segments
- * and each chunk's timestamps restart at 0. We remux them into a single valid
- * WebM using ffmpeg's concat demuxer with stream copy (`-c copy`) — no re-encode
- * (fast, lossless), which is correct because all chunks share the same codec.
+ * and each chunk's timestamps restart at 0. We remux them with ffmpeg's concat
+ * demuxer.
  *
- * ffmpeg comes from the `ffmpeg-static` package (a bundled binary), so no manual
- * system install is required.
+ * Strategy: try **stream copy** first (`-c copy` — fast, lossless, correct when the
+ * chunks share a codec). Real MediaRecorder output can have timestamp quirks that
+ * make copy fail, so we **fall back to re-encoding**, which always produces a clean
+ * continuous file. ffmpeg comes from the bundled `ffmpeg-static` (no system install).
  */
 
 import { execFile } from 'node:child_process';
@@ -27,11 +28,18 @@ const CHUNK_FILE = /^(\d+)\.webm$/;
 /** Temporary concat-list filename written into the session dir during a merge. */
 const CONCAT_LIST = '.concat-list.txt';
 
+/** Path to the bundled ffmpeg binary, or null if it could not be resolved. */
+export const ffmpegBinaryPath: string | null = ffmpegPath ?? null;
+
+export type MergeStrategy = 'copy' | 'reencode';
+
 export interface MergeResult {
   /** Absolute path of the merged video. */
   outputFile: string;
   /** How many chunks were joined. */
   mergedChunks: number;
+  /** Which ffmpeg strategy produced the output. */
+  strategy: MergeStrategy;
 }
 
 /**
@@ -64,15 +72,15 @@ export function buildConcatList(files: string[]): string {
 
 /**
  * Merge the given ordered chunk files in `sessionDir` into `outputName` (written to
- * the same dir). Idempotent — re-running overwrites the output. Rejects if ffmpeg
- * is unavailable or the merge fails.
+ * the same dir). Tries stream copy, then re-encode. Idempotent (`-y` overwrites).
+ * Rejects (with the ffmpeg error detail) if ffmpeg is unavailable or both fail.
  */
 export async function mergeChunks(
   sessionDir: string,
   files: string[],
   outputName: string,
 ): Promise<MergeResult> {
-  if (!ffmpegPath) {
+  if (!ffmpegBinaryPath) {
     throw new Error('ffmpeg binary not available (ffmpeg-static did not resolve a path)');
   }
   if (files.length === 0) {
@@ -82,15 +90,39 @@ export async function mergeChunks(
   const listPath = path.join(sessionDir, CONCAT_LIST);
   await fs.writeFile(listPath, buildConcatList(files));
 
+  const base = ['-y', '-f', 'concat', '-safe', '0', '-i', CONCAT_LIST];
+  const outputFile = path.join(sessionDir, outputName);
+
   try {
-    // -f concat + -c copy: remux (no re-encode). -y overwrites for idempotency.
-    await execFileAsync(
-      ffmpegPath,
-      ['-y', '-f', 'concat', '-safe', '0', '-i', CONCAT_LIST, '-c', 'copy', outputName],
-      { cwd: sessionDir },
-    );
-    return { outputFile: path.join(sessionDir, outputName), mergedChunks: files.length };
+    // Fast path: stream copy (no re-encode).
+    await runFfmpeg([...base, '-c', 'copy', outputName], sessionDir);
+    return { outputFile, mergedChunks: files.length, strategy: 'copy' };
+  } catch (copyError) {
+    // Safe path: re-encode. Fixes timestamp/container quirks that break stream copy.
+    try {
+      await runFfmpeg(
+        [...base, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '32', '-row-mt', '1', '-an', outputName],
+        sessionDir,
+      );
+      return { outputFile, mergedChunks: files.length, strategy: 'reencode' };
+    } catch (encodeError) {
+      throw new Error(
+        `merge failed — copy: ${(copyError as Error).message}; reencode: ${(encodeError as Error).message}`,
+      );
+    }
   } finally {
     await fs.rm(listPath, { force: true });
+  }
+}
+
+/** Run ffmpeg and, on failure, surface the tail of its stderr in the thrown error. */
+async function runFfmpeg(args: string[], cwd: string): Promise<void> {
+  try {
+    await execFileAsync(ffmpegBinaryPath as string, args, { cwd, maxBuffer: 64 * 1024 * 1024 });
+  } catch (err) {
+    const e = err as { stderr?: string | Buffer; message?: string };
+    const stderr = e.stderr ? e.stderr.toString() : '';
+    const tail = (stderr || e.message || String(err)).trim().split('\n').slice(-4).join(' | ');
+    throw new Error(tail || 'ffmpeg failed');
   }
 }

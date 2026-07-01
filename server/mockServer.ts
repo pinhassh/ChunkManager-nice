@@ -24,7 +24,7 @@ import cors from 'cors';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mergeChunks, orderedChunkFiles } from './videoMerger';
+import { ffmpegBinaryPath, mergeChunks, orderedChunkFiles } from './videoMerger';
 
 /** Payload the client sends to finalize a recording (mirrors the shared CompletePayload). */
 interface CompletePayload {
@@ -100,28 +100,27 @@ function shouldSimulateFailure(req: Request): boolean {
  * Returns a summary, or null if there was nothing to merge or it failed — a merge
  * failure never blocks finalize, since the individual chunks are already safe.
  */
-async function mergeSessionVideo(
-  dir: string,
-  sessionId: string,
-): Promise<{ file: string; mergedChunks: number } | null> {
+async function mergeSessionVideo(dir: string, sessionId: string): Promise<void> {
   try {
     const files = await orderedChunkFiles(dir);
     if (files.length === 0) {
       log('warning', 'No chunks to merge for session', { sessionId });
-      return null;
+      return;
     }
 
+    log('success', 'Merging chunks into a single video…', { sessionId, chunks: files.length });
     const result = await mergeChunks(dir, files, `${sessionId}.webm`);
-    const file = path.basename(result.outputFile);
     log('success', 'Merged chunks into a single video', {
       sessionId,
-      file,
+      file: path.basename(result.outputFile),
       mergedChunks: result.mergedChunks,
+      strategy: result.strategy,
     });
-    return { file, mergedChunks: result.mergedChunks };
   } catch (err) {
-    log('error', 'Failed to merge chunks into a single video', { sessionId, error: String(err) });
-    return null;
+    log('error', 'Failed to merge chunks into a single video', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -205,11 +204,12 @@ app.post('/recordings/:sessionId/complete', express.json(), async (req: Request,
       received,
     });
 
-    // Merge all chunks into `<sessionId>.webm`. A merge failure must not fail the
-    // request — the individual chunks remain safe on disk either way.
-    const merged = await mergeSessionVideo(dir, sessionId);
-
-    res.status(200).json({ ok: true, sessionId, received, merged });
+    // Respond immediately, then merge into `<sessionId>.webm` in the BACKGROUND so a
+    // long re-encode can't hit the client's request timeout. The merged file appears
+    // in the session folder shortly after; a merge failure never affects finalize
+    // (the individual chunks remain safe on disk).
+    res.status(200).json({ ok: true, sessionId, received });
+    void mergeSessionVideo(dir, sessionId);
   } catch (err) {
     log('error', 'Failed to finalize recording', { sessionId, error: String(err) });
     res.status(500).json({ ok: false, error: String(err) });
@@ -241,6 +241,14 @@ app.get('/health', (_req: Request, res: Response) => {
 
 async function start(): Promise<void> {
   await fs.mkdir(UPLOADS_DIR, { recursive: true });
+
+  // Surface ffmpeg availability up front — the chunk merge depends on it.
+  if (ffmpegBinaryPath) {
+    log('success', 'ffmpeg is available — chunk merge enabled', { ffmpeg: ffmpegBinaryPath });
+  } else {
+    log('warning', 'ffmpeg NOT available — chunk merge disabled (run `npm install`)', {});
+  }
+
   app.listen(PORT, () => {
     log('success', 'Mock upload server listening', {
       url: `http://localhost:${PORT}`,

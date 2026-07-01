@@ -71,6 +71,7 @@ describe('videoMerger — real ffmpeg merge (integration)', () => {
     const stat = await fs.stat(result.outputFile);
     expect(stat.size).toBeGreaterThan(0);
     expect(result.mergedChunks).toBe(2);
+    expect(result.strategy).toBe('copy'); // clean chunks → fast stream-copy path
     expect(path.basename(result.outputFile)).toBe('session-abc.webm');
 
     // Original chunks remain and the merged output is NOT counted as a chunk.
@@ -82,4 +83,12 @@ describe('videoMerger — real ffmpeg merge (integration)', () => {
   it('rejects when there are no chunks to merge', async () => {
     await expect(mergeChunks(dir, [], 'x.webm')).rejects.toThrow(/no chunks/);
   });
+
+  it('surfaces the ffmpeg error when inputs are not valid video (copy AND reencode fail)', async () => {
+    await fs.writeFile(path.join(dir, '0.webm'), 'this is not a video');
+    await fs.writeFile(path.join(dir, '1.webm'), 'neither is this');
+
+    // Both the copy and the re-encode fallback fail; the thrown error carries detail.
+    await expect(mergeChunks(dir, ['0.webm', '1.webm'], 'out.webm')).rejects.toThrow(/merge failed/);
+  }, 30_000);
 });
