@@ -19,12 +19,31 @@ export const RETRY = {
   baseDelayMs: 1_000,
   maxDelayMs: 30_000,
   factor: 2,
+  /**
+   * Lifetime cap across ALL drains. Once a chunk's cumulative attempts exceed
+   * this, it is dead-lettered (stops being retried and its blob is freed) so a
+   * permanently-failing chunk can't be retried forever (R2).
+   */
+  maxLifetimeAttempts: 24,
 } as const;
+
+/** Every network request is aborted after this long so a hung connection can't stall the pipeline (R5). */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** Retention for pruning finished bookkeeping so storage never grows without bound (R2). */
+export const RETENTION = {
+  /** Completed session records older than this are pruned on startup. */
+  completedSessionMs: 24 * 60 * 60 * 1_000,
+} as const;
+
+/** Maximum number of log rows kept in the on-screen list (R6). */
+export const MAX_LOG_ENTRIES = 200;
 
 /** IndexedDB database and object-store names. */
 export const DB = {
   name: 'chunk-manager',
-  version: 1,
+  // v2 adds the `status` index on the chunks store for memory-safe pending scans.
+  version: 2,
   chunkStore: 'chunks',
   sessionStore: 'sessions',
 } as const;
