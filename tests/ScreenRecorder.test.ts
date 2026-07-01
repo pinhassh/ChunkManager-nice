@@ -115,4 +115,22 @@ describe('ScreenRecorder — error handling', () => {
     handler(); // simulate the browser's native "Stop sharing"
     expect(onStreamEnded).toHaveBeenCalledOnce();
   });
+
+  it('releases the MediaStream if MediaRecorder construction fails (no leak) (CM-11 / R4)', async () => {
+    // Capture is granted, but constructing the recorder throws.
+    class ThrowingRecorder {
+      static isTypeSupported = (): boolean => true;
+      constructor() {
+        throw new Error('MediaRecorder unsupported');
+      }
+    }
+    vi.stubGlobal('MediaRecorder', ThrowingRecorder);
+    const onError = vi.fn();
+    const rec = new ScreenRecorder({ onChunk: vi.fn(), onError });
+
+    await expect(rec.start()).rejects.toThrow('MediaRecorder unsupported');
+    expect(stream.track.stop).toHaveBeenCalled(); // stream released — not leaked
+    expect(rec.isRecording).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
 });
