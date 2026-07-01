@@ -39,6 +39,13 @@ export const RETENTION = {
 /** Maximum number of log rows kept in the on-screen list (R6). */
 export const MAX_LOG_ENTRIES = 200;
 
+/**
+ * How often to probe real server reachability for the network indicator.
+ * `navigator.onLine` is unreliable (true whenever any interface is up), so the UI
+ * status is driven by whether the upload server actually answers.
+ */
+export const CONNECTIVITY_POLL_MS = 5_000;
+
 /** IndexedDB database and object-store names. */
 export const DB = {
   name: 'chunk-manager',

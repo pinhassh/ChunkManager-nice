@@ -47,7 +47,8 @@ export class AppUI {
   constructor(handlers: AppUIHandlers) {
     this.startBtn.addEventListener('click', () => handlers.onStart());
     this.stopBtn.addEventListener('click', () => handlers.onStop());
-    this.setNetwork(navigator.onLine);
+    // Neutral until the ConnectivityMonitor reports real server reachability.
+    this.networkEl.textContent = 'checking…';
   }
 
   /** Toggle the buttons and label for the current recording state. */
