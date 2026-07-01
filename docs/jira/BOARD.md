@@ -17,7 +17,7 @@ progress. Update the `Status` and `Progress` columns as work moves.
 | [CM-07](CM-07-ui-integration.md) | UI + main.ts integration | `feat/ui` | Done | 100% |
 | [CM-08](CM-08-tests.md) | Tests (positive + negative flows) | `test/coverage` | Done | 100% |
 | [CM-09](CM-09-docs.md) | Documentation & Jira board | `docs/project-docs` | Done | 100% |
-| [CM-10](CM-10-verification.md) | Build, verify E2E, finalize | `chore/verification` | In Progress | 80% |
+| [CM-10](CM-10-verification.md) | Build, verify E2E, finalize | `chore/verification` | Done | 100% |
 
 ## Sprint goal
 Deliver a runnable, tested, fault-tolerant chunk-upload mechanism with a
@@ -34,4 +34,6 @@ drops, shutdowns, and mid-upload failures.
 - **CM-07** Done — AppUI + main.ts wiring; recovery banner on startup.
 - **CM-08** Done — 26 tests passing (positive + negative flows).
 - **CM-09** Done — ARCHITECTURE, RECOVERY, ENGINEERING_DECISIONS, README.
-- **CM-10** In progress — build verified, tests green; final merge to `main` pending.
+- **CM-10** Done — build + 26 tests + E2E verified; merged `develop → main`.
+
+**Sprint complete — all 10 tasks Done.** ✅

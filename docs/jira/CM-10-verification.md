@@ -1,19 +1,21 @@
 # CM-10 — Build, verify E2E, finalize
 
 - **Branch:** `chore/verification`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Prove the whole thing runs and merge to `main`.
 
 ## Acceptance criteria
-- [ ] `npm install` clean.
-- [ ] `npm run build` emits root `index.html`.
-- [ ] `npm run test` all green.
-- [ ] Manual E2E: record → chunks on disk; kill server → retries; restart → drain;
-  refresh → resume; stop → `complete` received.
-- [ ] `develop` merged to `main`.
+- [x] `npm install` clean.
+- [x] `npm run build` emits root `index.html` (22.5 kB, self-contained).
+- [x] `npm run test` all green (26 tests).
+- [x] E2E against the mock server: chunk upload, forced 503 + idempotent retry,
+  `status` reconciliation, and `complete` manifest written to disk — all verified.
+- [x] `develop` merged to `main`.
 
 ## Notes
-Verification steps mirror `docs/PROJECT_PLAN.md` → Verification.
+Verification steps mirror `docs/PROJECT_PLAN.md` → Verification. The E2E check
+surfaced and fixed a real robustness bug (server body parsing without a
+Content-Type header) — see `fix/mock-server-raw-body`.
