@@ -112,7 +112,9 @@ app.use(cors());
  */
 app.post(
   '/recordings/:sessionId/chunks/:index',
-  express.raw({ type: '*/*', limit: '100mb' }),
+  // `type: () => true` parses the body as a Buffer regardless of (or a missing)
+  // Content-Type, so uploads work even if a client omits the header.
+  express.raw({ type: () => true, limit: '100mb' }),
   async (req: Request, res: Response) => {
     const { sessionId } = req.params;
     const index = Number(req.params.index);
