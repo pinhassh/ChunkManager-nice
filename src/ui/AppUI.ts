@@ -6,6 +6,7 @@
  * no business logic — `main.ts` wires it to the recorder and upload engine.
  */
 
+import { MAX_LOG_ENTRIES } from '../core/config';
 import type { LogEntry, LogLevel } from '../core/Logger';
 
 /** Recording lifecycle states reflected in the UI. */
@@ -99,6 +100,12 @@ export class AppUI {
     li.textContent = head;
     li.appendChild(meta);
     this.logEl.appendChild(li);
+
+    // Cap the list so it can't grow without bound over a long session (R6).
+    while (this.logEl.childElementCount > MAX_LOG_ENTRIES) {
+      this.logEl.removeChild(this.logEl.firstElementChild!);
+    }
+
     this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 }
