@@ -1,8 +1,9 @@
 # CM-11 — Robustness & resource-safety hardening
 
 - **Branch:** `fix/resource-safety`
-- **Status:** In Progress
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
+- **Result:** All 9 findings fixed; 14 new negative/stress tests added (40 tests total, tsc clean).
 - **Origin:** Code review of `ChunkStore` surfaced four issues; a system-wide audit
   found the same classes amplified across other layers.
 
@@ -31,44 +32,44 @@ Four issue classes threaten long-running / degraded-network use:
 ## Acceptance criteria
 
 **Storage (A/B/C/D):**
-- [ ] Add `countPendingChunks()` (uses `.count()`, no blobs) and `getPendingChunkKeys()`
+- [x] Add `countPendingChunks()` (uses `.count()`, no blobs) and `getPendingChunkKeys()`
   (key cursor, no blobs) and `getChunk(sessionId,index)` (loads ONE blob) to `IChunkStore`.
-- [ ] `saveChunk` catches `QuotaExceededError`, attempts reclaim (prune), and throws a
+- [x] `saveChunk` catches `QuotaExceededError`, attempts reclaim (prune), and throws a
   typed `StorageFullError` if still full.
-- [ ] `openDatabase` sets `onversionchange`/`onclose`; every op calls `ensureDb()` to
+- [x] `openDatabase` sets `onversionchange`/`onclose`; every op calls `ensureDb()` to
   transparently re-open a closed connection.
-- [ ] `pruneCompletedSessions(olderThanMs)` + `deleteSession()`; dead chunks are deleted.
+- [x] `pruneCompletedSessions(olderThanMs)` + `deleteSession()`; dead chunks are deleted.
 
 **Upload (A/D):**
-- [ ] `UploadManager` never loads full blob sets: counts via `countPendingChunks`,
+- [x] `UploadManager` never loads full blob sets: counts via `countPendingChunks`,
   iterates via `getPendingChunkKeys`, loads one blob at a time via `getChunk`.
-- [ ] Dead-letter: after `RETRY.maxLifetimeAttempts`, mark chunk `dead` (excluded from
+- [x] Dead-letter: after `RETRY.maxLifetimeAttempts`, mark chunk `dead` (excluded from
   pending) and stop retrying; free its blob.
-- [ ] `StorageFullError` from enqueue is surfaced to the UI and stops recording gracefully.
+- [x] `StorageFullError` from enqueue is surfaced to the UI and stops recording gracefully.
 
 **Network (C):**
-- [ ] `ApiClient` bounds every request with an AbortController timeout
+- [x] `ApiClient` bounds every request with an AbortController timeout
   (`REQUEST_TIMEOUT_MS`) → `HttpError(status=null)` on timeout.
 
 **Recorder (C):**
-- [ ] `ScreenRecorder.start` releases the MediaStream and resets state if setup fails
+- [x] `ScreenRecorder.start` releases the MediaStream and resets state if setup fails
   after capture is granted.
 
 **UI (D):**
-- [ ] `AppUI` caps the on-screen log to the last `MAX_LOG_ENTRIES`.
+- [x] `AppUI` caps the on-screen log to the last `MAX_LOG_ENTRIES`.
 
 ## Required tests (negative / stress)
 
-- [ ] ChunkStore: `countPendingChunks`/`getPendingChunkKeys` return correct data;
+- [x] ChunkStore: `countPendingChunks`/`getPendingChunkKeys` return correct data;
   `getChunk` loads a single record; `saveChunk` → `StorageFullError` on mocked quota;
   `ensureDb` re-opens after a simulated close; `pruneCompletedSessions` removes old ones;
   dead chunks excluded from pending.
-- [ ] UploadManager: dead-letter after max lifetime attempts (not retried forever);
+- [x] UploadManager: dead-letter after max lifetime attempts (not retried forever);
   drain/stats never call the blob-loading path (spy on `getPendingChunks`); enqueue
   surfaces `StorageFullError`.
-- [ ] ApiClient: request timeout → `HttpError(null)`.
-- [ ] AppUI: log list length capped at `MAX_LOG_ENTRIES`.
-- [ ] ScreenRecorder: `MediaRecorder` ctor throws → tracks stopped, `start()` rejects, `isRecording=false`.
+- [x] ApiClient: request timeout → `HttpError(null)`.
+- [x] AppUI: log list length capped at `MAX_LOG_ENTRIES`.
+- [x] ScreenRecorder: `MediaRecorder` ctor throws → tracks stopped, `start()` rejects, `isRecording=false`.
 
 ## Out of scope (noted)
 - Server-side disk GC of old `server/uploads/<sessionId>` folders (F10) — low priority;
