@@ -174,7 +174,7 @@ export class ScreenRecorder {
       if (event.data && event.data.size > 0) this.parts.push(event.data);
     };
 
-    recorder.onstop = (): void => this.handleCycleStop();
+    recorder.onstop = (): void => void this.handleCycleStop();
 
     // No timeslice: we want a single, self-contained file flushed on stop().
     recorder.start();
@@ -190,7 +190,7 @@ export class ScreenRecorder {
    * Emits the assembled chunk, then either chains the next cycle (still
    * recording) or resolves the final-stop promise (session ending).
    */
-  private handleCycleStop(): void {
+  private async handleCycleStop(): Promise<void> {
     const type = this.chosenMimeType || 'video/webm';
     const blob = new Blob(this.parts, { type });
     this.parts = [];
@@ -209,7 +209,9 @@ export class ScreenRecorder {
         context: { chunkIndex: chunk.index },
       });
 
-      void this.callbacks.onChunk(chunk);
+      // Await persistence so a FINAL stop only resolves once the last chunk is
+      // safely stored — this prevents finalizing a session before its last chunk.
+      await this.callbacks.onChunk(chunk);
     }
 
     if (this.recording) {

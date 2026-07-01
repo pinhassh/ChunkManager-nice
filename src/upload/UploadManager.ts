@@ -44,6 +44,8 @@ export interface UploadManagerOptions {
 
 export class UploadManager {
   private draining = false;
+  /** Set when drain() is called mid-drain, so we re-run and pick up new work/state. */
+  private rerun = false;
   /** Running count of chunks confirmed uploaded (for the UI). */
   private uploadedCount = 0;
 
@@ -129,7 +131,12 @@ export class UploadManager {
    * are ignored while one drain is in progress.
    */
   async drain(): Promise<void> {
-    if (this.draining) return;
+    // Already draining: flag a re-run so state changed mid-drain (e.g. a session
+    // just marked "stopped") is reprocessed once the current pass finishes.
+    if (this.draining) {
+      this.rerun = true;
+      return;
+    }
     if (this.isOffline()) {
       logger.warning('Skipping drain — currently offline.', { source: 'UploadManager.drain' });
       return;
@@ -138,14 +145,12 @@ export class UploadManager {
     this.draining = true;
     await this.emitStats();
     try {
-      // Re-read after each upload so chunks enqueued mid-drain are picked up.
-      let pending = await this.store.getPendingChunks();
-      while (pending.length > 0) {
-        const uploaded = await this.uploadWithRetry(pending[0]);
-        if (!uploaded) return; // exhausted/offline — retry on 'online' or next enqueue
-        pending = await this.store.getPendingChunks();
-      }
-      await this.finalizeReadySessions();
+      do {
+        this.rerun = false;
+        const progressed = await this.uploadAllPending();
+        if (!progressed) break; // exhausted/offline — retry on 'online' or next enqueue
+        await this.finalizeReadySessions();
+      } while (this.rerun && !this.isOffline());
     } catch (error) {
       logger.error('Unexpected error while draining the upload queue.', {
         source: 'UploadManager.drain',
@@ -155,6 +160,21 @@ export class UploadManager {
       this.draining = false;
       await this.emitStats();
     }
+  }
+
+  /**
+   * Upload every pending chunk in order. Re-reads the store after each upload so
+   * chunks enqueued mid-drain are picked up. Returns false if a chunk could not
+   * be sent (so the caller stops and waits for a later retry).
+   */
+  private async uploadAllPending(): Promise<boolean> {
+    let pending = await this.store.getPendingChunks();
+    while (pending.length > 0) {
+      const uploaded = await this.uploadWithRetry(pending[0]);
+      if (!uploaded) return false;
+      pending = await this.store.getPendingChunks();
+    }
+    return true;
   }
 
   // --- internals -------------------------------------------------------------
