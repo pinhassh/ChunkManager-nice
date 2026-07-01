@@ -1,8 +1,8 @@
 # CM-07 — UI + main.ts integration
 
 - **Branch:** `feat/ui`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Wire the pieces together and render status + logs to the user.

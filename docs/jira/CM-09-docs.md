@@ -1,8 +1,8 @@
 # CM-09 — Documentation & Jira board
 
 - **Branch:** `docs/project-docs`
-- **Status:** In Progress
-- **Progress:** 40%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Full project documentation in dedicated files, plus this simulated Jira board.

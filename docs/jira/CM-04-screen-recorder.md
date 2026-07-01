@@ -1,8 +1,8 @@
 # CM-04 — ScreenRecorder (getDisplayMedia + stop/restart)
 
 - **Branch:** `feat/screen-recorder`
-- **Status:** To Do
-- **Progress:** 0%
+- **Status:** Done
+- **Progress:** 100%
 
 ## Description
 Capture the screen and produce independently playable 30s chunks via the
