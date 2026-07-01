@@ -19,6 +19,7 @@ progress. Update the `Status` and `Progress` columns as work moves.
 | [CM-09](CM-09-docs.md) | Documentation & Jira board | `docs/project-docs` | Done | 100% |
 | [CM-10](CM-10-verification.md) | Build, verify E2E, finalize | `chore/verification` | Done | 100% |
 | [CM-11](CM-11-robustness-hardening.md) | Robustness & resource-safety hardening | `fix/resource-safety` | Done | 100% |
+| [CM-12](CM-12-connectivity-indicator.md) | Fix: network indicator ignores real reachability | `fix/connectivity-indicator` | Done | 100% |
 
 ## Sprint goal
 Deliver a runnable, tested, fault-tolerant chunk-upload mechanism with a
@@ -40,4 +41,7 @@ drops, shutdowns, and mid-upload failures.
   fetch timeout, MediaStream leak, log cap) from the ChunkStore review + audit;
   14 new negative/stress tests (40 total), tsc clean.
 
-**Sprint 1 complete (CM-01…CM-10). Sprint 2 complete (CM-11).** ✅
+- **CM-12** Done — network indicator now reflects real server reachability
+  (`ConnectivityMonitor` + `/health` probe), not the unreliable `navigator.onLine`.
+
+**Sprint 1 (CM-01…CM-10), Sprint 2 (CM-11), Sprint 3 (CM-12) — all complete.** ✅
